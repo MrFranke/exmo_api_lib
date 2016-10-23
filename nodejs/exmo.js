@@ -1,74 +1,43 @@
-var CryptoJS = require("crypto-js")
-	http = require('http'),
-	querystring = require('querystring'),
-	request = require('request'),
-	config = {
-		url: 'https://api.exmo.com/v1/'
-	};
-	
+const CryptoJS = require("crypto-js");
+const	http = require('http');
+const	querystring = require('querystring');
+const	request = require('request');
 
-function sign(message){
-    return CryptoJS.HmacSHA512(message, config.secret).toString(CryptoJS.enc.hex);
+
+class Exmo {
+  constructor (config) {
+    this.config = Object.assign({
+      nonce: Math.floor(new Date().getTime()),
+      url: 'https://api.exmo.com/v1/'
+    }, config);
+  }
+
+  signIn (message) {
+    return CryptoJS.HmacSHA512(message, this.config.secret).toString(CryptoJS.enc.hex);
+  }
+
+  query (method_name, data) {
+    data.nonce = this.config.nonce++;
+
+    let options = {
+      url: this.config.url + method_name,
+      method: 'POST',
+      headers: {
+        'Key': this.config.key,
+        'Sign': this.signIn( querystring.stringify(data))
+      },
+      form: data
+    };
+
+    return new Promise((resolve, reject) => {
+     	request(options, (error, response, body) => {
+          if (!error && response.statusCode == 200) {
+              resolve(body);
+          }else{ reject(error); }
+      });
+    });
+  }
 }
 
-exports.init_exmo = function (cfg) {
-	config.key = cfg.key;
-	config.secret = cfg.secret;
-	config.nonce = Math.floor(new Date().getTime());
-};
 
-exports.api_query = function(method_name, data, callback){
-	data.nonce = config.nonce++;
-	var post_data = querystring.stringify(data);
-
-	var options = {
-	  url: config.url + method_name,
-	  method: 'POST',
-	  headers: {
-	    'Key': config.key,
-	    'Sign': sign(post_data)
-	  },
-	  form:data
-	};
-	
- 	request(options, function (error, response, body) {
-        if (!error && response.statusCode == 200) {
-            callback(body);
-        }else{
-        	callback(error);
-        }
-    });
-};
-
-exports.api_query2 = function(method_name, data, callback){
-	data.nonce = config.nonce++;
-	var post_data = querystring.stringify(data);
-
-	var post_options = {
-	  	host: 'api.exmo.com',
-	  	port: '80',
-	  	path: '/v1/' + method_name,
-	  	method: 'POST',
-		headers: {
-			'Key': config.key,
-			'Sign': sign(post_data),
-			'Content-Type': 'application/x-www-form-urlencoded',
-			'Content-Length': Buffer.byteLength(post_data)
-		}
-	};
- 	var post_req = http.request(post_options, function(res) {
-      res.setEncoding('utf8');
-      res.on('data', function (chunk) {
-          callback(chunk);
-      });
-  	});
-
-  	post_req.write(post_data);
-  	post_req.end();
-};
-
-
-
-exports.test = function(){
-    return config.key;
-};
+module.exports = Exmo;
